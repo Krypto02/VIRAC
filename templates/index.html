@@ -1,1 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RT-32 LNSP Control</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+            background: linear-gradient(180deg, #000000 0%, #072142 100%);
+        }
+        h1, h2 {
+            color: #fff; /* Color de los títulos en blanco */
+            text-shadow: 2px 2px #000;
+        }
+        h1 {
+            font-size: 3em;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        h2 {
+            font-size: 2em;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .container-wrapper {
+            display: flex;
+            width: 100%;
+            max-width: 1200px;
+            height: calc(100vh - 80px);
+        }
+        .container {
+            background-color: rgba(0, 0, 51, 0.8);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            margin: 10px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+        .left, .center, .right {
+            flex: 1;
+        }
+        .left, .right {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .center {
+            flex: 1.5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        .input-group {
+            margin: 15px 0;
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+        }
+        label {
+            margin-bottom: 8px;
+            color: #ffcc00;
+        }
+        input {
+            padding: 12px;
+            border: 1px solid #555;
+            border-radius: 8px;
+            font-size: 1em;
+            background: #222;
+            color: #ffcc00;
+            transition: border-color 0.3s;
+        }
+        input:hover,
+        input:focus {
+            border-color: #ffcc00;
+        }
+        button {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            margin: 5px;
+            cursor: pointer;
+            background-color: #555;
+            color: #ffcc00;
+            transition: background-color 0.3s, transform 0.3s;
+            display: inline-block;
+            font-size: 1em;
+        }
+        button:hover {
+            background-color: #777;
+            transform: scale(1.1);
+        }
+        #dataContainer, #weatherData {
+            flex: 1;
+            padding: 20px;
+            border: 1px solid #555;
+            border-radius: 8px;
+            background-color: #111;
+            color: #ffcc00;
+            overflow-y: auto;
+            width: 100%;
+            margin-top: 10px;
+        }
+        #countdown {
+            margin-top: 20px;
+            font-size: 1.5em;
+            text-align: center;
+            color: #ffcc00;
+        }
+        .icon {
+            margin-right: 5px;
+        }
+        .buttons {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+        }
+        .buttons button {
+            flex: 1 1 auto;
+            min-width: 150px;
+            margin: 10px;
+        }
+        .stars {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+        }
+        .star {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background-color: #fff;
+            border-radius: 50%;
+        }
+        .star:nth-child(odd) {
+            animation: twinkle 1s infinite;
+        }
+        .star:nth-child(even) {
+            animation: twinkle 2.5s infinite;
+        }
+        @keyframes twinkle {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+        }
+        .shooting-star {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background-color: #fff;
+            border-radius: 50%;
+            opacity: 0;
+            animation: shooting 5s linear infinite;
+        }
+        @keyframes shooting {
+            0% {
+                transform: translate(0, 0);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(var(--endX), var(--endY));
+                opacity: 0;
+            }
+        }
+        .trail {
+            position: absolute;
+            width: 100px;
+            height: 2px;
+            background-color: #ffffff;
+            opacity: 0.8;
+            animation: trailFade 5s linear infinite;
+            transform-origin: left center;
+        }
+        @keyframes trailFade {
+            0% {
+                width: 10px;
+                opacity: 0.8;
+                transform: translate(0, 0);
+            }
+            100% {
+                width: 100px;
+                opacity: 0;
+                transform: translate(var(--endX), var(--endY));
+            }
+        }
+        .shooting-star::after {
+            content: "";
+            position: absolute;
+            width: 10px;
+            height: 1px;
+            background-color: #fff;
+            border-radius: 50%;
+            right: -5px;
+            top: 0;
+            transform: rotate(45deg);
+            opacity: 0.5;
+        }
+    </style>
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const socket = io();
 
+            socket.on('new_data', function(data) {
+                const dataContainer = document.getElementById('dataContainer');
+                const div = document.createElement('div');
+                const numPackages = dataContainer.children.length + 1;
+
+                div.textContent = `P-${numPackages} : ${data["data"]}`;
+                dataContainer.appendChild(div);
+                dataContainer.scrollTop = dataContainer.scrollHeight;
+            });
+
+            document.getElementById('stopButton').addEventListener('click', () => {
+                fetch('/stopReceiver', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => alert(data.message));
+            });
+
+            document.getElementById('getCurrentWeather').addEventListener('click', () => {
+                fetch('/getCurrentWeather', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        const weatherData = document.getElementById('weatherData');
+                        weatherData.innerHTML = `
+                            <p>Temperature: ${data.temperature_2m || 'No data'}</p>
+                            <p>Relative Humidity: ${data.relative_humidity_2m || 'No data'}</p>
+                            <p>Precipitation: ${data.precipitation || 'No data'}</p>
+                            <p>Rain: ${data.rain || 'No data'}</p>
+                            <p>Showers: ${data.showers || 'No data'}</p>
+                            <p>Snowfall: ${data.snowfall || 'No data'}</p>
+                            <p>Cloud Cover: ${data.cloud_cover || 'No data'}</p>
+                            <p>Surface Pressure: ${data.surface_pressure || 'No data'}</p>
+                            <p>Wind Speed: ${data.wind_speed_10m || 'No data'}</p>
+                            <p>Wind Direction: ${data.wind_direction_10m || 'No data'}</p>
+                            <p>Wind Gusts: ${data.wind_gusts_10m || 'No data'}</p>
+                        `;
+                    });
+            });
+
+            document.getElementById('calculateAntennaPositions').addEventListener('click', () => {
+                startCountdown();
+                const dateInput = document.getElementById('dateInput').value;
+                const timeInput = document.getElementById('timeInput').value;
+
+                const date = new Date(`${dateInput}T${timeInput}`);
+
+                fetch('/calculate_antenna_positions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        year: date.getFullYear(),
+                        month: date.getMonth() + 1,
+                        day: date.getDate(),
+                        hour: date.getHours(),
+                        minute: date.getMinutes()
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    alert(data.message);
+                });
+            });
+
+            function startCountdown() {
+                let seconds = 60;
+                const countdownElement = document.getElementById('countdown');
+                countdownElement.textContent = `Countdown: ${seconds} seconds`;
+
+                const interval = setInterval(() => {
+                    seconds--;
+                    countdownElement.textContent = `Countdown: ${seconds} seconds`;
+
+                    if (seconds <= 0) {
+                        clearInterval(interval);
+                    }
+                }, 1000);
+            }
+
+            document.getElementById('sendPTFtoACU').addEventListener('click', () => {
+                fetch('/sendPTFtoACU', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => alert(data.message));
+            });
+
+            document.getElementById('uploadImages').addEventListener('click', () => {
+                fetch('/uploadImages', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => alert(data.message));
+            });
+
+            const starContainer = document.querySelector('.stars');
+            for (let i = 0; i < 500; i++) {
+                const star = document.createElement('div');
+                star.classList.add('star');
+                star.style.top = `${Math.random() * 100}%`;
+                star.style.left = `${Math.random() * 100}%`;
+                star.style.animationDuration = `${Math.random() * 1 + 3}s`;
+                starContainer.appendChild(star);
+            }
+
+            function createShootingStar() {
+                const numStars = Math.floor(Math.random() * 3) + 1;
+                for (let i = 0; i < numStars; i++) {
+                    const shootingStar = document.createElement('div');
+                    shootingStar.classList.add('shooting-star');
+                    const startX = Math.random() * 100;
+                    const startY = Math.random() * 100;
+                    const endX = Math.random() * 100;
+                    const endY = Math.random() * 100;
+
+                    shootingStar.style.top = `${startY}vh`;
+                    shootingStar.style.left = `${startX}vw`;
+                    shootingStar.style.setProperty('--endX', `${endX}vw`);
+                    shootingStar.style.setProperty('--endY', `${endY}vh`);
+                    shootingStar.style.animationDuration = `${Math.random() * 2 + 2}s`;
+
+                    const angle = Math.atan2(endY - startY, endX - startX) * (180 / Math.PI);
+                    shootingStar.style.transform = `translate(-50%, -50%) rotate(${angle}deg)`;
+
+                    const trail = document.createElement('div');
+                    trail.classList.add('trail');
+                    shootingStar.appendChild(trail);
+
+                    starContainer.appendChild(shootingStar);
+
+                    setTimeout(() => {
+                        starContainer.removeChild(shootingStar);
+                    }, 6000);
+                }
+            }
+            setInterval(createShootingStar, Math.random() * 1000 + 1000);
+        });
+    </script>
+</head>
+<body>
+    <h1>RT-32 SUN CONTROL</h1>
+    <div class="stars"></div>
+    <div class="container-wrapper">
+        <div class="container left">
+            <h2>Receiver Control</h2>
+            <div id="dataContainer"></div>
+        </div>
+        <div class="container center">
+            <div class="input-group">
+                <label for="dateInput">Date (YYYY-MM-DD):</label>
+                <input type="date" id="dateInput">
+            </div>
+            <div class="input-group">
+                <label for="timeInput">Time (HH:MM):</label>
+                <input type="time" id="timeInput">
+            </div>
+            <div class="buttons">
+                <button id="stopButton"><i class="fas fa-stop icon"></i>Stop Receiver</button>
+            </div>
+            <div class="buttons">
+                <button id="getCurrentWeather"><i class="fas fa-cloud icon"></i>Get Current Weather</button>
+                <button id="calculateAntennaPositions"><i class="fas fa-calculator icon"></i>Calculate Antenna Positions</button>
+                <button id="sendPTFtoACU"><i class="fas fa-paper-plane icon"></i>Send PTF to ACU</button>
+                <button id="uploadImages"><i class="fas fa-upload icon"></i>Upload Images</button>
+            </div>
+            <div id="countdown"></div>
+        </div>
+        <div class="container right">
+            <h2>Weather Data</h2>
+            <div id="weatherData"></div>
+        </div>
+    </div>
+</body>
+</html>
